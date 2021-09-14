@@ -1,0 +1,90 @@
+```{r}
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+```
+
+```{r}
+recipient <- readRDS("./Integration/recipient_integrated.rds")
+```
+
+```{r}
+DimPlot(recipient, reduction = "umap", split.by = "orig.ident", group.by = "integrated_snn_res.0.3", repel = TRUE)
+```
+
+```{r}
+DefaultAssay(recipient) <- 'RNA'
+recipient <- NormalizeData(recipient)
+```
+
+```{r}
+FeaturePlot(recipient, features = c("Neat1", "Malat1"))
+VlnPlot(recipient, features = c("Neat1", "Malat1"), stack=TRUE, group.by = "integrated_snn_res.0.3")
+VlnPlot(recipient, features = c("nCount_RNA", "percent.mt"), stack=TRUE, group.by = "integrated_snn_res.0.3")
+```
+
+```{r}
+Idents(recipient) <- "integrated_snn_res.0.3"
+recipient_filtered <- subset(recipient, idents = c("0","1","2","4","5","6","7"))
+```
+
+```{r}
+DimPlot(recipient_filtered, reduction = "umap", split.by = "orig.ident", group.by = "integrated_snn_res.0.3", repel = TRUE)
+```
+
+```{r}
+DefaultAssay(recipient_filtered) <- 'RNA'
+recipient_filtered <- NormalizeData(recipient_filtered)
+```
+
+```{r}
+DefaultAssay(recipient_filtered) <- 'RNA'
+Idents(recipient_filtered) <- "integrated_snn_res.0.3"
+recipient_filtered.rnamarkers <- FindAllMarkers(recipient_filtered, only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.25)
+write.csv(recipient_filtered.rnamarkers, file ="./Integration/post_cleanup/res03_DE.csv", quote = FALSE)
+```
+
+```{r}
+fun <- function(x) {
+  if (x == "0") {"Ccl8/C1q Macs"} 
+  else if (x == "1") {"Cxcl2/Il1b Macs"}
+  else if (x == "2") {"Mono"}
+  else if (x == "4") {"Prolif"}
+  else if (x == "5") {"Arg1 Mac"}
+  else if (x == "6") {"Cd209+"}
+  else if (x == "7") {"NC Mono"}
+}
+
+# Filter for only Donor and Day 0
+recipient_filtered$annotations <- mapply(fun, recipient_filtered$integrated_snn_res.0.3)
+```
+
+```{r}
+DimPlot(recipient_filtered, reduction = "umap", split.by = "orig.ident", group.by = "annotations", repel = TRUE)
+DimPlot(recipient_filtered, reduction = "umap", group.by = "annotations", repel = TRUE)
+```
+
+```{r}
+saveRDS(recipient_filtered, "./Integration/post_cleanup/recipient_integrated_annotated.rds")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
