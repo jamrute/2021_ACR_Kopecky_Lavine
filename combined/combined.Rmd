@@ -10,30 +10,7 @@ library(data.table)
 ```
 
 ```{r}
-load("../filtered_transplant.Robj")
-```
-
-```{r}
-ben_transplant_updated <- UpdateSeuratObject(ben_transplant)
-```
-
-```{r}
-VlnPlot(ben_transplant_updated, features=c("nCount_RNA", "nFeature_RNA", "percent.mt"))
-```
-
-
-```{r}
-andrew_meta <- read.csv("../andrew_ben_transplant_meta.csv", row.names = 1)
-```
-
-```{r}
-ben_transplant_updated$GFP <- andrew_meta$gfp
-ben_transplant_updated$RFP <- andrew_meta$rfp
-ben_transplant_updated$CCR2 <- andrew_meta$Ccr2_PosNeg
-```
-
-```{r}
-save(ben_transplant_updated, file="../filtered_transplant_updated.Robj")
+load("/Users/jamrute/Library/CloudStorage/Box-Box/Macbook_Files/Grad_School/Secondary\ Projects/Ben_transplant/filtered_transplant_updated.Robj")
 ```
 
 ```{r}
@@ -42,14 +19,18 @@ ben_transplant_updated$DR <- ifelse(ben_transplant_updated$orig.ident %in% c("Po
 
 ```{r}
 DefaultAssay(ben_transplant_updated) <- 'RNA'
-ben_transplant_updated <- SCTransform(ben_transplant_updated, vars.to.regress = c("percent.mt"))
+ben_transplant_updated <- SCTransform(ben_transplant_updated, vars.to.regress = c("percent.mt"), method = "glmGamPoi", verbose = FALSE)
+ben_transplant_updated <- RunPCA(ben_transplant_updated, features = VariableFeatures(object = ben_transplant_updated), npcs=50, verbose=TRUE)
 ```
 
 ```{r}
-ben_transplant_updated <- RunPCA(ben_transplant_updated, features = VariableFeatures(object = ben_transplant_updated), npcs=50, verbose=TRUE)
-ben_transplant_updated <- FindNeighbors(ben_transplant_updated, dims = 1:50, verbose = FALSE)
-ben_transplant_updated <- FindClusters(ben_transplant_updated, resolution = c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8), verbose = FALSE)
-ben_transplant_updated <- RunUMAP(ben_transplant_updated, dims = 1:50, verbose = FALSE)
+ben_transplant_updated <- RunHarmony(ben_transplant_updated, c("orig.ident"), reduction = "pca", reduction.save = "harmony", assay.use = "SCT")
+```
+
+```{r}
+ben_transplant_updated <- FindNeighbors(ben_transplant_updated, dims = 1:50, verbose = FALSE, reduction = "harmony")
+ben_transplant_updated <- FindClusters(ben_transplant_updated, resolution = c(0.1), verbose = FALSE)
+ben_transplant_updated <- RunUMAP(ben_transplant_updated, dims = 1:50, verbose = FALSE, reduction = "harmony")
 ```
 
 ```{r}
@@ -62,6 +43,531 @@ DimPlot(ben_transplant_updated, group.by = "DR", cols=c("dodgerblue4", "red4"))
 
 ```{r}
 DimPlot(ben_transplant_updated, group.by = "orig.ident", cols=c("lightskyblue", "dodgerblue2", "royalblue4", "rosybrown", "red", "red4"))
+```
+
+
+```{r}
+DimPlot(ben_transplant_updated, group.by = "GFP", cols=c("gray75", "green3"), split.by = "DR")
+```
+
+```{r}
+ben_transplant_updated <- FindClusters(ben_transplant_updated, resolution = c(0.1,0.2,0.3,0.4,0.5), verbose = FALSE)
+```
+
+```{r}
+DimPlot(ben_transplant_updated, reduction = "umap", group.by = "SCT_snn_res.0.5", label = TRUE)
+```
+
+```{r}
+VlnPlot(ben_transplant_updated, features = "nCount_RNA", group.by = "SCT_snn_res.0.5", pt.size=0) + NoLegend()
+VlnPlot(ben_transplant_updated, features = "percent.mt", group.by = "SCT_snn_res.0.5", pt.size=0) + NoLegend()
+```
+
+
+```{r}
+DefaultAssay(ben_transplant_updated) <- 'SCT'
+Idents(ben_transplant_updated) <- "SCT_snn_res.0.5"
+ben_transplant_updated.rnamarkers <- FindAllMarkers(ben_transplant_updated, only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.25)
+write.csv(ben_transplant_updated.rnamarkers, file ="./DE_SCT_snn_res.0.5.csv", quote = FALSE)
+```
+
+```{r}
+saveRDS(ben_transplant_updated, "./harmony_integrated.rds")
+```
+
+```{r}
+Idents(ben_transplant_updated) <- "SCT_snn_res.0.5"
+levels(ben_transplant_updated)
+```
+
+```{r}
+ben_transplant_updated <- subset(ben_transplant_updated, idents = c("0","1","2","4","5","7","8","9","10","11","12","13"))
+```
+
+```{r}
+DefaultAssay(ben_transplant_updated) <- 'RNA'
+ben_transplant_updated <- SCTransform(ben_transplant_updated, vars.to.regress = c("percent.mt"), method = "glmGamPoi", verbose = FALSE)
+ben_transplant_updated <- RunPCA(ben_transplant_updated, features = VariableFeatures(object = ben_transplant_updated), npcs=50, verbose=TRUE)
+```
+
+```{r}
+ben_transplant_updated <- RunHarmony(ben_transplant_updated, c("orig.ident"), reduction = "pca", reduction.save = "harmony", assay.use = "SCT")
+ben_transplant_updated <- FindNeighbors(ben_transplant_updated, dims = 1:50, verbose = FALSE, reduction = "harmony")
+ben_transplant_updated <- FindClusters(ben_transplant_updated, resolution = c(0.1,0.2,0.3,0.4,0.5,0.6), verbose = FALSE)
+ben_transplant_updated <- RunUMAP(ben_transplant_updated, dims = 1:50, verbose = FALSE, reduction = "harmony")
+```
+
+```{r}
+DimPlot(ben_transplant_updated, reduction = "umap", group.by = "SCT_snn_res.0.5", label = TRUE)
+```
+
+```{r}
+DimPlot(ben_transplant_updated, group.by = "orig.ident", cols=c("lightskyblue", "dodgerblue2", "royalblue4", "rosybrown", "red", "red4"))
+```
+
+```{r}
+DimPlot(ben_transplant_updated, group.by = "GFP", cols=c("gray75", "green3"), split.by = "DR")
+```
+
+```{r}
+DefaultAssay(ben_transplant_updated) <- 'SCT'
+Idents(ben_transplant_updated) <- "SCT_snn_res.0.5"
+ben_transplant_updated.rnamarkers <- FindAllMarkers(ben_transplant_updated, only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.25)
+write.csv(ben_transplant_updated.rnamarkers, file ="./DE_SCT_snn_res.0.5.csv", quote = FALSE)
+```
+```{r}
+saveRDS(ben_transplant_updated, "./postClean/integrated.rds")
+```
+
+```{r}
+ben_transplant_updated <- readRDS("./v2/integrated.rds")
+```
+
+```{r}
+VlnPlot(ben_transplant_updated, features = "nCount_RNA", group.by = "SCT_snn_res.0.5", pt.size = 0) + NoLegend()
+VlnPlot(ben_transplant_updated, features = "percent.mt", group.by = "SCT_snn_res.0.5", pt.size = 0) + NoLegend()
+```
+
+```{r}
+ggplot(ben_transplant_updated@meta.data, aes(x=SCT_snn_res.0.5, fill=DR)) + geom_bar(position = "fill") + theme_bw() + theme(axis.text.x = element_text(angle = 90))
+```
+
+```{r}
+Idents(ben_transplant_updated) <- "SCT_snn_res.0.5"
+levels(ben_transplant_updated)
+```
+
+```{r}
+ben_transplant_updated <- subset(ben_transplant_updated, idents = c("0","1","2","3","4","6","7","8","9","10","11"))
+```
+
+```{r}
+DefaultAssay(ben_transplant_updated) <- 'RNA'
+ben_transplant_updated <- SCTransform(ben_transplant_updated, vars.to.regress = c("percent.mt"), method = "glmGamPoi", verbose = FALSE)
+ben_transplant_updated <- RunPCA(ben_transplant_updated, features = VariableFeatures(object = ben_transplant_updated), npcs=50, verbose=TRUE)
+ben_transplant_updated <- RunHarmony(ben_transplant_updated, c("orig.ident"), reduction = "pca", reduction.save = "harmony", assay.use = "SCT")
+ben_transplant_updated <- FindNeighbors(ben_transplant_updated, dims = 1:50, verbose = FALSE, reduction = "harmony")
+ben_transplant_updated <- FindClusters(ben_transplant_updated, resolution = c(0.3,0.4,0.5,0.6), verbose = FALSE)
+ben_transplant_updated <- RunUMAP(ben_transplant_updated, dims = 1:50, verbose = FALSE, reduction = "harmony")
+```
+
+```{r}
+DimPlot(ben_transplant_updated, reduction = "umap", group.by = "SCT_snn_res.0.4", label = TRUE, split.by = "orig.ident")
+```
+
+```{r}
+DimPlot(ben_transplant_updated, group.by = "orig.ident", cols=c("lightskyblue", "dodgerblue2", "royalblue4", "rosybrown", "red", "red4"))
+```
+
+```{r}
+DefaultAssay(ben_transplant_updated) <- 'SCT'
+Idents(ben_transplant_updated) <- "SCT_snn_res.0.5"
+ben_transplant_updated.rnamarkers <- FindAllMarkers(ben_transplant_updated, only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.25)
+write.csv(ben_transplant_updated.rnamarkers, file ="./DE_SCT_snn_res.0.5.csv", quote = FALSE)
+```
+
+```{r}
+FeaturePlot(ben_transplant_updated, features = "Ccr2", split.by = "orig.ident")
+```
+
+```{r}
+ben_transplant_updated <- readRDS("./v3/final_integrated.rds")
+```
+
+```{r}
+DimPlot(ben_transplant_updated, reduction = "umap", group.by = "SCT_snn_res.0.5", label = TRUE)
+```
+
+```{r}
+Idents(ben_transplant_updated) <- "SCT_snn_res.0.5"
+
+fun <- function(x) {
+  if (x == "0") {"Resident"} 
+  else if (x == "1") {"MHC2"}
+  else if (x == "2") {"Ccl8 Mac"}
+  else if (x == "3") {"MHC2"}
+  else if (x == "4") {"Cxcl2Mac"}
+  else if (x == "5") {"Monocyte"}
+  else if (x == "6") {"Monocyte"}
+  else if (x == "7") {"Arg1 Mac"}
+  else if (x == "8") {"Proliferating"}
+  else if (x == "9") {"Cd209a MoDC"}
+  else if (x == "10") {"Cd207/Vsig4 mac"}
+  else if (x == "11") {"NCMono"}
+  else if (x == "12") {"IFN I Mac"}
+}
+ben_transplant_updated$annotation <- mapply(fun, ben_transplant_updated$SCT_snn_res.0.5)
+```
+
+```{r}
+Idents(ben_transplant_updated) <- "SCT_snn_res.0.5"
+
+fun <- function(x) {
+  if (x == "0") {"ResMac2"} 
+  else if (x == "1") {"Mac5"}
+  else if (x == "2") {"Mac2"}
+  else if (x == "3") {"Mac5"}
+  else if (x == "4") {"Mac4"}
+  else if (x == "5") {"Mono1"}
+  else if (x == "6") {"Mono1"}
+  else if (x == "7") {"Mac1"}
+  else if (x == "8") {"Mac6"}
+  else if (x == "9") {"DC"}
+  else if (x == "10") {"ResMac1"}
+  else if (x == "11") {"Mono2"}
+  else if (x == "12") {"Mac3"}
+}
+ben_transplant_updated$annotation2 <- mapply(fun, ben_transplant_updated$SCT_snn_res.0.5)
+```
+
+```{r}
+ben_transplant_updated$annotation2 <- factor(ben_transplant_updated$annotation2, levels = c("Mono1","Mono2","Mac1","Mac2","Mac3","Mac4","Mac5","Mac6","ResMac1","ResMac2","DC"))
+```
+
+```{r}
+DimPlot(ben_transplant_updated, reduction = "umap", group.by = "annotation2", label = FALSE,
+        cols = paletteDiscrete(unique(ben_transplant_updated$annotation2), set = "stallion"))
+```
+
+```{r}
+DimPlot(ben_transplant_updated, reduction = "umap", group.by = "annotation", label = FALSE,
+        cols = paletteDiscrete(unique(ben_transplant_updated$annotation), set = "stallion"))
+```
+
+```{r}
+ggplot(ben_transplant_updated@meta.data, aes(x=orig.ident, fill=annotation2)) + geom_bar(position = "fill") + theme_linedraw() + theme(axis.text.x = element_text(angle = 90)) +  scale_fill_manual(values=as.vector(paletteDiscrete(unique(ben_transplant_updated$annotation2), set = "stallion"))) + theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank()) 
+```
+
+```{r}
+DimPlot(ben_transplant_updated, group.by = "DR", cols=c("dodgerblue4", "red4"))
+```
+
+```{r}
+DimPlot(ben_transplant_updated, group.by = "orig.ident", cols=c("lightskyblue", "dodgerblue2", "royalblue4", "rosybrown", "red", "red4"))
+```
+
+```{r}
+DimPlot(ben_transplant_updated, group.by = "GFP", cols=c("gray75", "green3"))
+```
+
+```{r}
+DefaultAssay(ben_transplant_updated) <- 'SCT'
+Idents(ben_transplant_updated) <- "annotation2"
+ben_transplant_updated.rnamarkers <- FindAllMarkers(ben_transplant_updated, only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.25)
+write.csv(ben_transplant_updated.rnamarkers, file ="./annotation/DE_SCT_annotation2.csv", quote = FALSE)
+```
+
+```{r}
+top5 <- ben_transplant_updated.rnamarkers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+DoHeatmap(ben_transplant_updated, features = top5$gene, group.colors=as.vector(paletteDiscrete(unique(ben_transplant_updated$annotation2), set = "stallion"))) + NoLegend() + scale_fill_viridis()
+```
+
+###### z-scores
+
+```{r}
+top5 <- ben_transplant_updated.rnamarkers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+```
+
+```{r}
+write.csv(top5, file ="./annotation/top5_zscore_genes_annotation2.csv", quote = FALSE)
+```
+
+# Mono1
+```{r}
+expdata <- GetAssayData(ben_transplant_updated)
+Pop1<-filter(top5, cluster == "Mono1")$gene
+pops<-list(Pop1)
+
+#Z-Scores
+z_scores<-NULL
+
+for (i in 1:length(pops)) {
+genes <- pops[[i]]
+zz <- which(tolower(rownames(expdata)) %in% tolower(genes))
+av <- numeric(ncol(expdata))
+
+geneExp <- as.matrix(expdata[zz, ])
+geneExp <- t(scale(t(geneExp)))
+geneExp[is.nan(geneExp)] <- 0
+z_scores <- rbind(z_scores,(av + colSums(geneExp) / length(zz)))
+}
+ben_transplant_updated@meta.data$Mono1_z<-z_scores[1,]
+FeaturePlot(object=ben_transplant_updated, features = "Mono1_z",pt.size=.5) + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,2))
+```
+
+# Mono2
+```{r}
+expdata <- GetAssayData(ben_transplant_updated)
+Pop1<-filter(top5, cluster == "Mono2")$gene
+pops<-list(Pop1)
+
+#Z-Scores
+z_scores<-NULL
+
+for (i in 1:length(pops)) {
+genes <- pops[[i]]
+zz <- which(tolower(rownames(expdata)) %in% tolower(genes))
+av <- numeric(ncol(expdata))
+
+geneExp <- as.matrix(expdata[zz, ])
+geneExp <- t(scale(t(geneExp)))
+geneExp[is.nan(geneExp)] <- 0
+z_scores <- rbind(z_scores,(av + colSums(geneExp) / length(zz)))
+}
+ben_transplant_updated@meta.data$Mono2_z<-z_scores[1,]
+FeaturePlot(object=ben_transplant_updated, features = "Mono2_z",pt.size=.5) + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,2))
+```
+
+# Mac1
+```{r}
+expdata <- GetAssayData(ben_transplant_updated)
+Pop1<-filter(top5, cluster == "Mac1")$gene
+pops<-list(Pop1)
+
+#Z-Scores
+z_scores<-NULL
+
+for (i in 1:length(pops)) {
+genes <- pops[[i]]
+zz <- which(tolower(rownames(expdata)) %in% tolower(genes))
+av <- numeric(ncol(expdata))
+
+geneExp <- as.matrix(expdata[zz, ])
+geneExp <- t(scale(t(geneExp)))
+geneExp[is.nan(geneExp)] <- 0
+z_scores <- rbind(z_scores,(av + colSums(geneExp) / length(zz)))
+}
+ben_transplant_updated@meta.data$Mac1_z<-z_scores[1,]
+FeaturePlot(object=ben_transplant_updated, features = "Mac1_z",pt.size=.5) + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,2))
+```
+
+# Mac2
+```{r}
+expdata <- GetAssayData(ben_transplant_updated)
+Pop1<-filter(top5, cluster == "Mac2")$gene
+pops<-list(Pop1)
+
+#Z-Scores
+z_scores<-NULL
+
+for (i in 1:length(pops)) {
+genes <- pops[[i]]
+zz <- which(tolower(rownames(expdata)) %in% tolower(genes))
+av <- numeric(ncol(expdata))
+
+geneExp <- as.matrix(expdata[zz, ])
+geneExp <- t(scale(t(geneExp)))
+geneExp[is.nan(geneExp)] <- 0
+z_scores <- rbind(z_scores,(av + colSums(geneExp) / length(zz)))
+}
+ben_transplant_updated@meta.data$Mac2_z<-z_scores[1,]
+FeaturePlot(object=ben_transplant_updated, features = "Mac2_z",pt.size=.5) + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,2))
+```
+
+# Mac3
+```{r}
+expdata <- GetAssayData(ben_transplant_updated)
+Pop1<-filter(top5, cluster == "Mac3")$gene
+pops<-list(Pop1)
+
+#Z-Scores
+z_scores<-NULL
+
+for (i in 1:length(pops)) {
+genes <- pops[[i]]
+zz <- which(tolower(rownames(expdata)) %in% tolower(genes))
+av <- numeric(ncol(expdata))
+
+geneExp <- as.matrix(expdata[zz, ])
+geneExp <- t(scale(t(geneExp)))
+geneExp[is.nan(geneExp)] <- 0
+z_scores <- rbind(z_scores,(av + colSums(geneExp) / length(zz)))
+}
+ben_transplant_updated@meta.data$Mac3_z<-z_scores[1,]
+FeaturePlot(object=ben_transplant_updated, features = "Mac3_z",pt.size=.5) + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,2))
+```
+
+# Mac4
+```{r}
+expdata <- GetAssayData(ben_transplant_updated)
+Pop1<-filter(top5, cluster == "Mac4")$gene
+pops<-list(Pop1)
+
+#Z-Scores
+z_scores<-NULL
+
+for (i in 1:length(pops)) {
+genes <- pops[[i]]
+zz <- which(tolower(rownames(expdata)) %in% tolower(genes))
+av <- numeric(ncol(expdata))
+
+geneExp <- as.matrix(expdata[zz, ])
+geneExp <- t(scale(t(geneExp)))
+geneExp[is.nan(geneExp)] <- 0
+z_scores <- rbind(z_scores,(av + colSums(geneExp) / length(zz)))
+}
+ben_transplant_updated@meta.data$Mac4_z<-z_scores[1,]
+FeaturePlot(object=ben_transplant_updated, features = "Mac4_z",pt.size=.5) + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,2))
+```
+
+# Mac5
+```{r}
+expdata <- GetAssayData(ben_transplant_updated)
+Pop1<-filter(top5, cluster == "Mac5")$gene
+pops<-list(Pop1)
+
+#Z-Scores
+z_scores<-NULL
+
+for (i in 1:length(pops)) {
+genes <- pops[[i]]
+zz <- which(tolower(rownames(expdata)) %in% tolower(genes))
+av <- numeric(ncol(expdata))
+
+geneExp <- as.matrix(expdata[zz, ])
+geneExp <- t(scale(t(geneExp)))
+geneExp[is.nan(geneExp)] <- 0
+z_scores <- rbind(z_scores,(av + colSums(geneExp) / length(zz)))
+}
+ben_transplant_updated@meta.data$Mac5_z<-z_scores[1,]
+FeaturePlot(object=ben_transplant_updated, features = "Mac5_z",pt.size=.5) + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,2))
+```
+
+# Mac6
+```{r}
+expdata <- GetAssayData(ben_transplant_updated)
+Pop1<-filter(top5, cluster == "Mac6")$gene
+pops<-list(Pop1)
+
+#Z-Scores
+z_scores<-NULL
+
+for (i in 1:length(pops)) {
+genes <- pops[[i]]
+zz <- which(tolower(rownames(expdata)) %in% tolower(genes))
+av <- numeric(ncol(expdata))
+
+geneExp <- as.matrix(expdata[zz, ])
+geneExp <- t(scale(t(geneExp)))
+geneExp[is.nan(geneExp)] <- 0
+z_scores <- rbind(z_scores,(av + colSums(geneExp) / length(zz)))
+}
+ben_transplant_updated@meta.data$Mac6_z<-z_scores[1,]
+FeaturePlot(object=ben_transplant_updated, features = "Mac6_z",pt.size=.5) + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,2))
+```
+
+# ResMac1
+```{r}
+expdata <- GetAssayData(ben_transplant_updated)
+Pop1<-filter(top5, cluster == "ResMac1")$gene
+pops<-list(Pop1)
+
+#Z-Scores
+z_scores<-NULL
+
+for (i in 1:length(pops)) {
+genes <- pops[[i]]
+zz <- which(tolower(rownames(expdata)) %in% tolower(genes))
+av <- numeric(ncol(expdata))
+
+geneExp <- as.matrix(expdata[zz, ])
+geneExp <- t(scale(t(geneExp)))
+geneExp[is.nan(geneExp)] <- 0
+z_scores <- rbind(z_scores,(av + colSums(geneExp) / length(zz)))
+}
+ben_transplant_updated@meta.data$ResMac1_z<-z_scores[1,]
+FeaturePlot(object=ben_transplant_updated, features = "ResMac1_z",pt.size=.5) + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,2))
+```
+# ResMac2
+```{r}
+expdata <- GetAssayData(ben_transplant_updated)
+Pop1<-filter(top5, cluster == "ResMac2")$gene
+pops<-list(Pop1)
+
+#Z-Scores
+z_scores<-NULL
+
+for (i in 1:length(pops)) {
+genes <- pops[[i]]
+zz <- which(tolower(rownames(expdata)) %in% tolower(genes))
+av <- numeric(ncol(expdata))
+
+geneExp <- as.matrix(expdata[zz, ])
+geneExp <- t(scale(t(geneExp)))
+geneExp[is.nan(geneExp)] <- 0
+z_scores <- rbind(z_scores,(av + colSums(geneExp) / length(zz)))
+}
+ben_transplant_updated@meta.data$ResMac2_z<-z_scores[1,]
+FeaturePlot(object=ben_transplant_updated, features = "ResMac2_z",pt.size=.5) + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,2))
+```
+
+# DC
+```{r}
+expdata <- GetAssayData(ben_transplant_updated)
+Pop1<-filter(top5, cluster == "DC")$gene
+pops<-list(Pop1)
+
+#Z-Scores
+z_scores<-NULL
+
+for (i in 1:length(pops)) {
+genes <- pops[[i]]
+zz <- which(tolower(rownames(expdata)) %in% tolower(genes))
+av <- numeric(ncol(expdata))
+
+geneExp <- as.matrix(expdata[zz, ])
+geneExp <- t(scale(t(geneExp)))
+geneExp[is.nan(geneExp)] <- 0
+z_scores <- rbind(z_scores,(av + colSums(geneExp) / length(zz)))
+}
+ben_transplant_updated@meta.data$DC_z<-z_scores[1,]
+FeaturePlot(object=ben_transplant_updated, features = "DC_z",pt.size=.5) + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,2))
+```
+
+
+
+```{r}
+DefaultAssay(ben_transplant_updated) <- "SCT"
+genes <- c("Arg1","Ccl8","Cd207","Cd209a","Ifit1","Cxcl1","Cd72","Ly6c2","Ace","Mki67","Folr2")
+
+DotPlot(ben_transplant_updated, features = unique(genes), group.by = "annotation", col.min=0, cols = c("lightgrey", "red")) + RotatedAxis()
+```
+
+```{r}
+DotPlot(ben_transplant_updated, features = "Ccr2", group.by = "annotation2", col.min=0, cols = c("lightgrey", "red")) + RotatedAxis()
+```
+
+
+```{r}
+ggplot(ben_transplant_updated@meta.data, aes(x=annotation2, fill=GFP)) + geom_bar(position = "fill") + theme_linedraw() + theme(axis.text.x = element_text(angle = 90)) +  scale_fill_manual(values=c("gray75", "green3")) + theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank()) 
+```
+
+```{r}
+ggplot(ben_transplant_updated@meta.data, aes(x=annotation2, fill=DR)) + geom_bar(position = "fill") + theme_linedraw() + theme(axis.text.x = element_text(angle = 90)) +  scale_fill_manual(values=c("dodgerblue4", "red4")) + theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank()) 
+```
+
+```{r}
+ggplot(ben_transplant_updated@meta.data, aes(x=annotation2, fill=orig.ident)) + geom_bar(position = "fill") + theme_linedraw() + theme(axis.text.x = element_text(angle = 90)) +  scale_fill_manual(values=c("lightskyblue", "dodgerblue2", "royalblue4", "rosybrown", "red", "red4")) + theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank()) 
+```
+
+```{r}
+saveRDS(ben_transplant_updated, "./annotation/integrated_annotated.rds")
+```
+
+```{r}
+ben_transplant_updated <- readRDS("./annotation/integrated_annotated.rds")
 ```
 
 ```{r}
@@ -89,47 +595,90 @@ DoHeatmap(ben_transplant_updated, features = top10$gene, group.colors=c("lightsk
 ```
 
 ```{r}
-DimPlot(ben_transplant_updated, group.by = "GFP", cols=c("gray75", "green3"))
+prop.table(table(ben_transplant_updated$GFP, ben_transplant_updated$orig.ident), margin = 2)
 ```
 
 ```{r}
-DimPlot(ben_transplant_updated, group.by = "GFP", cols=c("gray75", "green3"), split.by = "DR")
+table(ben_transplant_updated$DR)
+```
+
+
+```{r}
+library(clusterProfiler)
+library(DOSE)
+library(enrichplot)
+library(ReactomePA)
+library(org.Hs.eg.db)
+library(ggplot2)
+library(biomaRt)
+library(dplyr)
 ```
 
 ```{r}
-expdata <- GetAssayData(ben_transplant_updated)
-Pop1<-c("Socs1","Cxcl10","Lamp1","Xist","Dusp2","Rnaset2a","Irf7","Isg15","Nfil3","Il1rn")
-pops<-list(Pop1)
-
-#Z-Scores
-z_scores<-NULL
-
-for (i in 1:length(pops)) {
-genes <- pops[[i]]
-zz <- which(tolower(rownames(expdata)) %in% tolower(genes))
-av <- numeric(ncol(expdata))
-
-geneExp <- as.matrix(expdata[zz, ])
-geneExp <- t(scale(t(geneExp)))
-geneExp[is.nan(geneExp)] <- 0
-z_scores <- rbind(z_scores,(av + colSums(geneExp) / length(zz)))
-}
-ben_transplant_updated@meta.data$pop1_z<-z_scores[1,]
-FeaturePlot(object=ben_transplant_updated, features = "pop1_z",pt.size=.5) + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,2)) + ggtitle("Socs1,Cxcl10,Lamp1,Xist,Dusp2,Rnaset2a,Irf7,Isg15,Nfil3,Il1rn")
+d <- read.csv("./donor_vs_recipient_DE.csv")
+d <- filter(d, d$p_val < 0.05)
+d
 ```
 
 ```{r}
-saveRDS(ben_transplant_updated, "./combined_processed.rds")
+d <- filter(d, d$cluster == "Donor")
+d
 ```
 
 ```{r}
-ben_transplant_updated <- readRDS("./combined_processed.rds")
+eg <- bitr(as.character(d$gene), fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Mm.eg.db")
+```
+```{r}
+d <- filter(d, gene %in% eg$SYMBOL)
+d$gene <- eg$ENTREZID
+## feature 1: numeric vector
+geneList = d[,3]
+## feature 2: named vector
+names(geneList) = as.character(d[,8])
+## feature 3: decreasing order
+geneList = sort(geneList, decreasing = TRUE)
+```
+
+###  WikiPathways
+
+# ORA UP
+```{r}
+gene <- names(geneList)[geneList > 0]
+pathways <- enrichWP(gene, organism = "Mus musculus")
+dotplot(pathways) + scale_color_gradientn(colors=c("red","lightgrey", "blue"), oob=scales::squish) + theme(axis.text.x = element_text(size = 5, angle = 0, hjust = .5, vjust = .5, face = "plain"), axis.text.y = element_text(size = 10, angle = 0, hjust = 1, vjust = 0, face = "plain"), axis.title.x=element_blank())
 ```
 
 ```{r}
-ben_transplant_updated$orig.ident <- factor(ben_transplant_updated$orig.ident, levels = c("BD", "Pod1D", "Pod7D", "Pod1R", "Pod7R", "Pod14R"), ordered = TRUE)
-VlnPlot(ben_transplant_updated, features = c("nCount_RNA","percent.mt","nFeature_RNA"), ncol = 3) + NoLegend()
+## convert gene ID to Symbol
+edox <- setReadable(pathways, 'org.Mm.eg.db', 'ENTREZID')
+cnetplot(edox, foldChange=geneList, circular = TRUE, colorEdge = TRUE, node_label='none') + scale_color_gradientn(colors=c("red","lightgrey", "blue"), oob=scales::squish)
 ```
+
+```{r}
+cnetplot(edox, node_label="all") 
+cnetplot(edox, node_label="none") 
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
