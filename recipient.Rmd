@@ -1,0 +1,151 @@
+```{r}
+library(Seurat)
+library(dplyr)
+library(viridis)
+library(ggplot2)
+library(Matrix)
+library(RColorBrewer)
+library(scales)
+library(data.table)
+library(ArchR)
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(ggplot2)
+library(viridis)
+library(dorothea)
+library(tibble)
+library(pheatmap)
+library(tidyr)
+library(viper)
+library(biomaRt)
+```
+
+```{r}
+ben_transplant_updated <- readRDS("/Users/jamrute/Library/CloudStorage/Box-Box/Macbook_Files/Grad_School/Secondary\ Projects/Ben_transplant/Combined/harmony_integration/annotation/integrated_annotated.rds")
+```
+
+```{r}
+ben_transplant_updated$annotation <- factor(ben_transplant_updated$annotation, levels = c("Arg1 Mac","Ccl8 Mac","Cd207/Vsig4 mac","Cd209a MoDC","IFN Mac","InflammatoryMac","MHC2","Monocyte","NCMono","Proliferating","Resident"))
+```
+
+```{r}
+DimPlot(ben_transplant_updated, reduction = "umap", group.by = "annotation", label = FALSE,
+        cols = paletteDiscrete(unique(ben_transplant_updated$annotation), set = "stallion"))
+```
+
+```{r}
+unique(ben_transplant_updated$annotation)
+```
+
+```{r}
+recruited_mac <- subset(ben_transplant_updated, idents = c("Arg1 Mac","Ccl8 Mac","Cd209a MoDC","IFN Mac","InflammatoryMac","MHC2","Monocyte","NCMono","Proliferating"))
+```
+
+```{r}
+Idents(recruited_mac) <- "DR"
+recruited_recipient <- subset(recruited_mac, idents = c("Recipient"))
+```
+
+```{r}
+DimPlot(recruited_recipient, reduction = "umap", group.by = "annotation", label = FALSE,
+        cols = paletteDiscrete(unique(ben_transplant_updated$annotation), set = "stallion"))
+```
+
+```{r}
+recruited_recipient <- RunUMAP(recruited_recipient, dims = 1:50, verbose = FALSE, reduction = "harmony")
+```
+
+```{r}
+DimPlot(recruited_recipient, reduction = "umap", group.by = "annotation", label = FALSE,
+        cols = paletteDiscrete(unique(ben_transplsant_updated$annotation), set = "stallion"))
+```
+
+```{r}
+FeaturePlot(ben_transplant_updated, reduction = 'umap', features = "Ccr2", raster=FALSE) + scale_color_gradientn(colors=paletteContinuous("solarExtra"), oob=scales::squish, limits=c(0,1))
+
+FeaturePlot(recruited_recipient, reduction = 'umap', features = "Ccr2", raster=FALSE) + scale_color_gradientn(colors=paletteContinuous("solarExtra"), oob=scales::squish, limits=c(0,1))
+```
+
+```{r}
+convertHumanGeneList <- function(x){
+require("biomaRt")
+human = useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+mouse = useMart("ensembl", dataset = "mmusculus_gene_ensembl")
+genesV2 = getLDS(attributes = c("hgnc_symbol"), filters = "hgnc_symbol", values = x , mart = human, attributesL = c("mgi_symbol"), martL = mouse, uniqueRows=T)
+humanx <- unique(genesV2[, 2])
+# Print the first 6 genes found to the screen
+print(head(humanx))
+return(humanx)
+}
+```
+
+
+# Cell Cycle Regression
+```{r}
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+m.s.genes <- convertHumanGeneList(cc.genes.updated.2019$s.genes)
+m.g2m.genes <- convertHumanGeneList(cc.genes.updated.2019$g2m.genes)
+
+recruited_recipient <- CellCycleScoring(recruited_recipient, s.features = m.s.genes, g2m.features = m.g2m.genes, set.ident = TRUE)
+```
+
+# Regress out the effect of the Cell Cycle
+```{r}
+recruited_recipient <- SCTransform(recruited_recipient, vars.to.regress=c("percent.mt", "S.Score", "G2M.Score"), verbose = FALSE,
+                      conserve.memory = FALSE, return.only.var.genes = TRUE)
+```
+
+```{r}
+write.csv(as.matrix(recruited_recipient[["SCT"]]@scale.data), 
+          file = "./SCT_CCReg_count_matrix.txt", quote = FALSE)
+
+# Save the meta data
+write.csv(recruited_recipient@meta.data, file = "./recipient_SCT_CCReg_meta.csv", quote = FALSE)
+```
+
+###### Overlaying Palantir results on UMAP
+
+```{r}
+meta <- read.csv2('./myeloid_palantir_meta_data.csv', header=TRUE, sep=',', row.names = 1)
+Myeloid_2 <- AddMetaData(recruited_recipient, meta)
+
+Myeloid_2@meta.data$pseudotime <- as.numeric(as.character(Myeloid_2@meta.data$pseudotime))
+Myeloid_2@meta.data$entropy <- as.numeric(as.character(Myeloid_2@meta.data$entropy))
+```
+
+```{r}
+FeaturePlot(Myeloid_2, reduction = "umap", features = c("pseudotime"), col=plasma(256))
+FeaturePlot(Myeloid_2, reduction = "umap", features = c("entropy"), col=plasma(256))
+```
+
+```{r}
+FeaturePlot(Myeloid_2, reduction = "umap", features = c("pseudotime"), col=plasma(256), split.by = "orig.ident")
+FeaturePlot(Myeloid_2, reduction = "umap", features = c("entropy"), col=plasma(256), split.by = "orig.ident")
+DimPlot(Myeloid_2, group.by = "annotation", split.by = "orig.ident")
+```
+
+```{r}
+fdl <- read.csv2('./myeloid_fdl.csv', header=TRUE, sep=',', row.names = 1)
+fdl$x <- as.double(fdl$x)
+fdl$y <- as.double(fdl$y)
+colnames(fdl) <- paste0("FDL_", 1:2)
+recruited_recipient[["fdl"]] <- CreateDimReducObject(embeddings = as.matrix(fdl), key = "FDL_")
+```
+
+```{r}
+recruited_recipient$orig.ident <- as.character(recruited_recipient$orig.ident) 
+```
+
+```{r}
+SaveH5Seurat(recruited_recipient, filename = "./recruited_recipient.h5Seurat")
+```
+
+```{r}
+Convert("./recruited_recipient.h5Seurat", dest = "h5ad")
+```
+
+
+
