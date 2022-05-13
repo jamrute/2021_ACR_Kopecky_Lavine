@@ -1,0 +1,248 @@
+```{r}
+library(Seurat)
+library(dplyr)
+library(viridis)
+library(ggplot2)
+library(Matrix)
+library(RColorBrewer)
+library(scales)
+library(data.table)
+library(ArchR)
+```
+
+```{r}
+ref <- readRDS("/Users/jamrute/Library/CloudStorage/Box-Box/Macbook_Files/Grad_School/Secondary\ Projects/Ben_transplant/Combined/harmony_integration/annotation/integrated_annotated.rds")
+```
+
+###### Preprocessing Steps
+
+# Load the dataset and create a Seurat Object
+```{r}
+WT_dir <- '/Users/jamrute/Library/CloudStorage/Box-Box/Macbook_Files/Grad_School/Secondary\ Projects/Ben_transplant/MyD88_KO/Matrices/Wildtype-WT/filtered_feature_bc_matrix/'
+WT.data <- Read10X(data.dir =WT_dir)
+WT <- CreateSeuratObject(counts = WT.data, min.cells = 3, min.features = 200)
+WT$orig.ident <- "WT"
+
+MyD88KO_dir <- '/Users/jamrute/Library/CloudStorage/Box-Box/Macbook_Files/Grad_School/Secondary\ Projects/Ben_transplant/MyD88_KO/Matrices/MyD88_Day_3KO/filtered_feature_bc_matrix/'
+MyD88KO.data <- Read10X(data.dir =MyD88KO_dir)
+MyD88KO <- CreateSeuratObject(counts = MyD88KO.data, min.cells = 3, min.features = 200)
+MyD88KO$orig.ident <- "MyD88KO"
+
+query <- merge(WT, y = c(MyD88KO))
+```
+
+# QC Filtering
+```{r}
+query[["percent.mt"]] <- PercentageFeatureSet(query, pattern = "^mt-")
+query <- subset(query, subset = nFeature_RNA < 6000 & nCount_RNA < 50000 & percent.mt < 10)
+```
+
+# Normalize Query
+```{r}
+DefaultAssay(query) <- 'RNA'
+query <- SCTransform(query, vars.to.regress = c("percent.mt"))
+```
+
+# Label Transfer
+```{r}
+# Run SPCA and UMAP
+ref <- RunSPCA(ref, assay = 'SCT', graph = 'SCT_snn')
+ref <- RunUMAP(ref, dims = 1:50, verbose = FALSE, reduction = "harmony", return.model = TRUE)
+```
+
+```{r}
+anchors <- FindTransferAnchors(
+  reference = ref,
+  query = query,
+  normalization.method = "SCT",
+  reference.reduction = "spca",
+  dims = 1:50
+)
+```
+
+```{r}
+query <- MapQuery(
+  anchorset = anchors,
+  query = query,
+  reference = ref,
+  refdata = list(
+    celltype = "annotation2"
+  ),
+  reference.reduction = "spca", 
+  reduction.model = "umap"
+)
+```
+
+```{r}
+DimPlot(query, reduction = "ref.umap", group.by = "predicted.celltype", label = FALSE,
+        cols = paletteDiscrete(unique(ref$annotation2), set = "stallion"))
+
+DimPlot(query, reduction = "ref.umap", group.by = "predicted.celltype", label = FALSE,
+        cols = paletteDiscrete(unique(ref$annotation2), set = "stallion"), split.by = "orig.ident")
+```
+
+# Plot Mapping Results
+```{r}
+FeaturePlot(query, features = unique(query$predicted.celltype),  reduction = "ref.umap", cols = c("lightgrey", "darkred"), ncol = 4) & theme(plot.title = element_text(size = 10))
+```
+
+```{r}
+FeaturePlot(query, features = c("Gm15056", "Ccl5", "Arg1", "Irgm1", "Ass1", "Ly6a", "Cxcl9", "Serpina3i", "Il1rn",
+                                "Spp1", "Cxcl1", "Ifi205", "Isg15", "Top2a", "H2-D1", "Slamf8", "Irf7", "Ccl9",
+                                "Fam49b", "H2-T23", "Ly6e", "Cd74", "Cd274", "H2-K1", "Cx3cr1", "H2-DMa", "Ifi47",
+                                "Serpina3g", "H2-Ab1", "Ifi44", "H2-Aa", "Oasl2", "Cxcl2", "H2-Q4", "Nos2", "Ifi209", "Nrp2"),  reduction = "ref.umap", ncol=3, split.by = "orig.ident")
+ggsave("genes.png", width = 10, height = 100, limitsize = FALSE)
+```
+
+```{r}
+saveRDS(query, "./query_mapped.rds")
+```
+
+```{r}
+query <- readRDS("./query_mapped.rds")
+```
+
+```{r}
+query$predicted.celltype <- factor(query$predicted.celltype, levels = c("Mono1","Mono2","Mac1","Mac2","Mac3","Mac4","Mac5","Mac6","ResMac1","ResMac2","DC"))
+```
+
+# Look at cell type breakdown
+```{r}
+ggplot(query@meta.data, aes(x=orig.ident, fill=predicted.celltype)) + geom_bar(position = "fill") + theme_linedraw() + theme(axis.text.x = element_text(angle = 90)) +  scale_fill_manual(values=as.vector(paletteDiscrete(unique(ref$annotation2), set = "stallion"))) + theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank()) 
+```
+
+```{r}
+Idents(query) <- "orig.ident"
+query_wt <- subset(query, idents = "WT")
+query_ko <- subset(query, idents = "MyD88KO")
+```
+
+```{r}
+FeaturePlot(query, reduction = 'ref.umap', features = "Ccr2") + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,2))
+
+plot_density(query, features = "Ccr2", reduction = "ref.umap")
+```
+
+```{r}
+
+```
+
+
+# T-Cell Activation
+```{r}
+tc_activation <- list(c("Ccl5", "Cxcl9", "Cd274", "Nos2"))
+
+DefaultAssay(query) <- "SCT"
+query <- AddModuleScore(
+  object = query,
+  features = tc_activation,
+  name = 'tc_activation'
+)
+
+Idents(query) <- "orig.ident"
+query_WT <- subset(query, idents = "WT")
+query_MyD88KO <- subset(query, idents = "MyD88KO")
+```
+
+```{r}
+FeaturePlot(query, reduction = 'ref.umap', features = "tc_activation1") + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,1))
+
+FeaturePlot(query_WT, reduction = 'ref.umap', features = "tc_activation1") + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,1))
+
+FeaturePlot(query_MyD88KO, reduction = 'ref.umap', features = "tc_activation1") + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,1))
+```
+
+# IFN
+```{r}
+IFN <- list(c("Irgm1", "Isg15", "Ifi205", "Ly6a", "Irf7", "Ifi47", "Ifi44", "Oasl2"))
+
+DefaultAssay(query) <- "SCT"
+query <- AddModuleScore(
+  object = query,
+  features = IFN,
+  name = 'IFN'
+)
+
+Idents(query) <- "orig.ident"
+query_WT <- subset(query, idents = "WT")
+query_MyD88KO <- subset(query, idents = "MyD88KO")
+```
+
+```{r}
+FeaturePlot(query, reduction = 'ref.umap', features = "IFN1") + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,1))
+
+FeaturePlot(query_WT, reduction = 'ref.umap', features = "IFN1") + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,1))
+
+FeaturePlot(query_MyD88KO, reduction = 'ref.umap', features = "IFN1") + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,1)) 
+```
+
+
+# Antigen_presentation
+```{r}
+antigen_presentation <- list(c("H2-D1", "H2-T23", "Cd74", "H2-K1", "H2-DMa", "H2-Ab1", "H2-Aa", "H2-Q4"))
+
+DefaultAssay(query) <- "SCT"
+query <- AddModuleScore(
+  object = query,
+  features = antigen_presentation,
+  name = 'antigen_presentation'
+)
+
+Idents(query) <- "orig.ident"
+query_WT <- subset(query, idents = "WT")
+query_MyD88KO <- subset(query, idents = "MyD88KO")
+```
+
+```{r}
+FeaturePlot(query, reduction = 'ref.umap', features = "antigen_presentation1") + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,1))
+
+FeaturePlot(query_WT, reduction = 'ref.umap', features = "antigen_presentation1") + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,1))
+
+FeaturePlot(query_MyD88KO, reduction = 'ref.umap', features = "antigen_presentation1") + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,1))
+```
+
+```{r}
+write.csv(query@meta.data, file = "./query_meta.csv", quote = FALSE)
+```
+
+```{r}
+query <- readRDS("query_mapped.rds")
+```
+
+```{r}
+FeaturePlot(query, reduction = 'ref.umap', features = "Ccr2") + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,2))
+
+FeaturePlot(query, reduction = 'ref.umap', features = "Folr2") + scale_color_gradientn(colors=c("blue","turquoise2","yellow","red","red4"), oob=scales::squish, limits=c(0,1))
+```
+
+```{r}
+plot_density(query, reduction = 'ref.umap', features = "Ccr2")
+plot_density(query, reduction = 'ref.umap', features = "Folr2")
+```
+
+```{r}
+query$CCR2 <- ifelse(query$predicted.celltype %in% c("ResMac1","ResMac2"), "CCR2Neg", "CCR2Pos")
+```
+
+```{r}
+DotPlot(query, features = c("antigen_presentation1", "IFN1", "tc_activation1"), group.by = "predicted.celltype") + RotatedAxis()
+DotPlot(query, features = c("antigen_presentation1", "IFN1", "tc_activation1"), group.by = "CCR2") + RotatedAxis()
+```
+
+```{r}
+saveRDS(query, "./query_mapped.rds")
+```
+
+```{r}
+query <- readRDS("./query_mapped.rds")
+```
+
+
+```{r}
+table(query$orig.ident)
+```
+
+
