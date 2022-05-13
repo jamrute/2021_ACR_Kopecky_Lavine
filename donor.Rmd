@@ -1,0 +1,526 @@
+```{r}
+library(Seurat)
+library(dplyr)
+library(viridis)
+library(ggplot2)
+library(Matrix)
+library(RColorBrewer)
+library(scales)
+library(data.table)
+library(ArchR)
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(ggplot2)
+library(viridis)
+library(dorothea)
+library(tibble)
+library(pheatmap)
+library(tidyr)
+library(viper)
+library(biomaRt)
+```
+
+```{r}
+ben_transplant_updated <- readRDS("/Users/jamrute/Library/CloudStorage/Box-Box/Macbook_Files/Grad_School/Secondary\ Projects/Ben_transplant/Combined/harmony_integration/annotation/integrated_annotated.rds")
+```
+
+```{r}
+DimPlot(ben_transplant_updated, reduction = "umap", group.by = "annotation2", label = FALSE,
+        cols = paletteDiscrete(unique(ben_transplant_updated$annotation2), set = "stallion"))
+```
+
+```{r}
+Idents(ben_transplant_updated) <- "DR"
+donor <- subset(ben_transplant_updated, idents = c("Donor"))
+```
+
+```{r}
+DefaultAssay(donor) <- 'RNA'
+donor <- NormalizeData(donor)
+all.genes <- rownames(donor)
+donor <- ScaleData(donor, features = all.genes)
+```
+
+```{r}
+DimPlot(donor, reduction = "umap", group.by = "annotation", label = FALSE,
+        cols = paletteDiscrete(unique(ben_transplant_updated$annotation), set = "stallion"))
+```
+
+```{r}
+donor <- RunUMAP(donor, dims = 1:50, verbose = FALSE, reduction = "harmony")
+```
+
+```{r}
+DimPlot(donor, reduction = "umap", group.by = "annotation2", label = FALSE,
+        cols = paletteDiscrete(unique(ben_transplant_updated$annotation2), set = "stallion"))
+
+DimPlot(donor, reduction = "umap", group.by = "annotation2", label = FALSE,
+        cols = paletteDiscrete(unique(ben_transplant_updated$annotation2), set = "stallion"), split.by = "orig.ident")
+```
+
+```{r}
+DimPlot(donor, group.by = "orig.ident", cols=c("lightskyblue", "dodgerblue2", "royalblue4"))
+```
+
+```{r}
+DimPlot(donor, group.by = "GFP", cols=c("gray75", "green3"))
+```
+
+```{r}
+ggplot(donor@meta.data, aes(x=orig.ident, fill=annotation2)) + geom_bar(position = "fill") + theme_linedraw() + theme(axis.text.x = element_text(angle = 90)) +  scale_fill_manual(values=as.vector(paletteDiscrete(unique(ben_transplant_updated$annotation2), set = "stallion"))) + theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank()) 
+```
+
+```{r}
+FeaturePlot(donor, reduction = 'umap', features = "Ccr2", raster=FALSE) + scale_color_gradientn(colors=paletteContinuous("solarExtra"), oob=scales::squish, limits=c(0,1))
+
+FeaturePlot(donor, reduction = 'umap', features = "H2-Ab1", raster=FALSE) + scale_color_gradientn(colors=paletteContinuous("solarExtra"), oob=scales::squish, limits=c(0,5))
+```
+
+```{r}
+DotPlot(donor, features = c("Ccr2","H2-Aa"), group.by = "annotation2", col.min=-1, col.max = 0.5, cols = c("lightgrey", "red")) + RotatedAxis()
+```
+
+```{r}
+VlnPlot(donor, features = "Ccr2", group.by = "annotation2")
+```
+
+```{r}
+VlnPlot(donor, features = "Ccr2", group.by = "annotation")
+```
+
+```{r}
+DotPlot(donor, features = c("Ccr2","H2-Aa"), group.by = "CCR2", col.min=-1, col.max = 1, cols = c("lightgrey", "red")) + RotatedAxis()
+```
+
+```{r}
+donor$CCR2 <- ifelse(donor$annotation2 %in% c("ResMac1","ResMac2","Mac2"), "CCR2Neg", "CCR2Pos")
+```
+
+```{r}
+DefaultAssay(donor) <- 'RNA'
+Idents(donor) <- "CCR2"
+donor.rnamarkers <- FindAllMarkers(donor, only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.25)
+write.csv(donor.rnamarkers, file ="./DE_CCR2Pos_vsCCR2Neg0_NEW.csv", quote = FALSE)
+```
+
+```{r}
+top10 <- donor.rnamarkers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+DotPlot(donor, features = top10$gene) + RotatedAxis()
+```
+
+```{r}
+DefaultAssay(donor) <- 'RNA'
+top10 <- donor.rnamarkers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+DoHeatmap(donor, features = top10$gene, group.by = "CCR2") + NoLegend() + scale_fill_viridis()
+```
+
+```{r}
+donor$opStatus <- ifelse(donor$orig.ident %in% c("BD"), "PreOP", "PostOP")
+donor$opStatus <- factor(donor$opStatus, levels = c("PreOP","PostOP")) 
+donor$orig.ident <- factor(donor$orig.ident, levels = c("BD","Pod1D","Pod7D"))
+```
+
+```{r}
+# CCR2+ DGE
+Idents(donor) <- "CCR2"
+donor_integrated.ccr2Pos <- subset(donor, idents = c("CCR2Pos"))
+
+DefaultAssay(donor_integrated.ccr2Pos) <- 'RNA'
+Idents(donor_integrated.ccr2Pos) <- "opStatus"
+donor_integrated.ccr2Pos.markers <- FindAllMarkers(donor_integrated.ccr2Pos, only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.01)
+write.csv(donor_integrated.ccr2Pos.markers, file ="./CCR2Positive_Pre_vs_Post_Op_DGE_SCT.csv", quote = FALSE)
+```
+
+```{r}
+top10 <- donor_integrated.ccr2Pos.markers %>% group_by(cluster) %>% top_n(n = 100, wt = avg_log2FC)
+DoHeatmap(donor_integrated.ccr2Pos, features = top10$gene, group.by = "opStatus") + NoLegend() + scale_fill_viridis() + 
+    theme(text = element_text(size = 2))
+
+DoHeatmap(donor_integrated.ccr2Pos, features = top10$gene, group.by = "orig.ident") + NoLegend() + scale_fill_viridis() + 
+    theme(text = element_text(size = 2))
+```
+
+
+```{r}
+# CCR2- DGE
+Idents(donor) <- "CCR2"
+donor_integrated.ccr2Neg <- subset(donor, idents = c("CCR2Neg"))
+
+DefaultAssay(donor_integrated.ccr2Neg) <- 'RNA'
+Idents(donor_integrated.ccr2Neg) <- "opStatus"
+donor_integrated.ccr2Neg.markers <- FindAllMarkers(donor_integrated.ccr2Neg, only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.01)
+write.csv(donor_integrated.ccr2Neg.markers, file ="./CCR2Negative_Pre_vs_Post_Op_DGE_SCT.csv", quote = FALSE)
+```
+
+```{r}
+top10 <- donor_integrated.ccr2Neg.markers %>% group_by(cluster) %>% top_n(n = 100, wt = avg_log2FC)
+DoHeatmap(donor_integrated.ccr2Neg, features = top10$gene, group.by = "opStatus") + NoLegend() + scale_fill_viridis() + 
+    theme(text = element_text(size = 2))
+
+DoHeatmap(donor_integrated.ccr2Neg, features = top10$gene, group.by = "orig.ident") + NoLegend() + scale_fill_viridis() + 
+    theme(text = element_text(size = 2))
+```
+
+# CCR2+ vs CCR2- PostOp
+```{r}
+Idents(donor) <- "opStatus"
+donor_PostOp <- subset(donor, idents = "PostOP")
+DefaultAssay(donor_PostOp) <- 'RNA'
+Idents(donor_PostOp) <- "CCR2"
+donor_PostOp.markers <- FindAllMarkers(donor_PostOp, only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.01)
+write.csv(donor_PostOp.markers, file ="./PostOp_CCR2Pos_vsCCR2Neg.csv", quote = FALSE)
+```
+
+```{r}
+top10 <- donor_PostOp.markers %>% group_by(cluster) %>% top_n(n = 100, wt = avg_log2FC)
+DoHeatmap(donor, features = top10$gene, group.by = "orig.ident") + NoLegend() + scale_fill_viridis() + 
+    theme(text = element_text(size = 2))
+```
+
+# CCR2+ : NF-kB
+```{r}
+DefaultAssay(donor_BD_Pod1D) <- 'RNA'
+NF_kB <- list(c("Cxcl9","Ccl5","Cxcl10","Lgals3","Spp1","Stat1","Il1b"))
+
+donor_BD_Pod1D <- AddModuleScore(
+  object = donor_BD_Pod1D,
+  features = NF_kB,
+  name = 'NF_kB'
+)
+```
+
+# CCR2- : IFN-g
+```{r}
+DefaultAssay(donor_BD_Pod1D) <- 'RNA'
+IFN_g <- list(c("Cxcl9", "Ly6a", "Ccl8", "Ccl5", "Cxcl10", "Fcgr4", "Ifi30", "Stat1"))
+
+donor_BD_Pod1D <- AddModuleScore(
+  object = donor_BD_Pod1D,
+  features = IFN_g,
+  name = 'IFN_g'
+)
+```
+
+# CCR2+: Activation Signature
+```{r}
+DefaultAssay(donor) <- 'RNA'
+CCR2Pos_Activation <- list(c("Ccl5","Cxcl9","Ccl8","Cxcl10","Spp1","Arg1","Cxcl3","Cxcl1","Stat1","Il1b","Il1rn","Nlrp3","Tnfaip2"))
+
+donor <- AddModuleScore(
+  object = donor,
+  features = CCR2Pos_Activation,
+  name = 'CCR2Pos_Activation'
+)
+```
+
+# CCR2-: Activation Signature
+```{r}
+DefaultAssay(donor) <- 'RNA'
+CCR2Neg_Activation <- list(c("Cxcl1","Ccl12","Ccl6","Ccl9","Cxcl2","Lgals1","Jund"))
+
+donor <- AddModuleScore(
+  object = donor,
+  features = CCR2Neg_Activation,
+  name = 'CCR2Neg_Activation'
+)
+```
+
+```{r}
+write.csv(donor@meta.data, file = "./activation_geneset_meta.csv", quote = FALSE)
+```
+
+```{r}
+saveRDS(donor, "./donor.rds")
+```
+
+```{r}
+donor <- readRDS("./donor.rds")
+```
+
+```{r}
+donor$orig.ident <- as.character(donor$orig.ident) 
+```
+
+```{r}
+SaveH5Seurat(donor, filename = "./donor.h5Seurat")
+```
+
+```{r}
+Convert("./donor.h5Seurat", dest = "h5ad")
+```
+
+# Pathway analysis across clusters
+```{r}
+library(clusterProfiler)
+library(DOSE)
+library(enrichplot)
+library(ReactomePA)
+library(ggplot2)
+```
+
+```{r}
+d <- donor_integrated.ccr2Pos.markers
+d <- filter(d, avg_log2FC > 0.58)
+d <- filter(d, p_val_adj < 0.05)
+d_new <- d[c("gene", "cluster")]
+
+eg <- bitr(as.character(d_new$gene), fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Mm.eg.db")
+d_new <- filter(d_new, gene %in% eg$SYMBOL)
+d_new_enterzID <- merge(d_new, eg, by.x = "gene", by.y = "SYMBOL")
+d_new_enterzID <- d_new_enterzID[c("ENTREZID", "cluster")]
+geneList <- unstack(d_new_enterzID)
+```
+
+```{r}
+ck <- compareCluster(geneCluster = geneList, fun = enrichGO, OrgDb="org.Mm.eg.db")
+#ck <- compareCluster(geneCluster = geneList, fun = enrichKEGG, organism="mmu")
+ck <- setReadable(ck, OrgDb = org.Mm.eg.db, keyType="ENTREZID")
+head(ck) 
+```
+
+```{r}
+dotplot(ck, font.size = 8) + theme(axis.text.x=element_text(angle=90, hjust=1))
+```
+
+# PROGENy
+```{r}
+donor$criteria <- paste(donor$opStatus, donor$CCR2, sep = "_")
+```
+
+```{r}
+Idents(donor) <- "criteria"
+```
+
+```{r}
+## We create a data frame with the specification of the cells that belong to 
+## each cluster to match with the Progeny scores.
+CellsClusters <- data.frame(Cell = names(Idents(donor)), 
+    CellType = as.character(Idents(donor)),
+    stringsAsFactors = FALSE)
+```
+
+```{r}
+## We compute the Progeny activity scores and add them to our Seurat object
+## as a new assay called Progeny. 
+donor <- progeny(donor, scale=FALSE, organism="Mouse", top=500, perm=1, 
+    return_assay = TRUE)
+
+## We can now directly apply Seurat functions in our Progeny scores. 
+## For instance, we scale the pathway activity scores. 
+donor <- Seurat::ScaleData(donor, assay = "progeny") 
+
+## We transform Progeny scores into a data frame to better handling the results
+progeny_scores_df <- 
+    as.data.frame(t(GetAssayData(donor, slot = "scale.data", 
+        assay = "progeny"))) %>%
+    rownames_to_column("Cell") %>%
+    gather(Pathway, Activity, -Cell) 
+
+## We match Progeny scores with the cell clusters.
+progeny_scores_df <- inner_join(progeny_scores_df, CellsClusters)
+
+## We summarize the Progeny scores by cellpopulation
+summarized_progeny_scores <- progeny_scores_df %>% 
+    group_by(Pathway, CellType) %>%
+    summarise(avg = mean(Activity), std = sd(Activity))
+```
+
+```{r}
+## We prepare the data for the plot
+summarized_progeny_scores_df <- summarized_progeny_scores %>%
+    dplyr::select(-std) %>%   
+    spread(Pathway, avg) %>%
+    data.frame(row.names = 1, check.names = FALSE, stringsAsFactors = FALSE) 
+```
+
+```{r}
+paletteLength = 100
+myColor = colorRampPalette(c("Darkblue", "white","red"))(paletteLength)
+
+progenyBreaks = c(seq(min(summarized_progeny_scores_df), 0, 
+                      length.out=ceiling(paletteLength/2) + 1),
+                  seq(max(summarized_progeny_scores_df)/paletteLength, 
+                      max(summarized_progeny_scores_df), 
+                      length.out=floor(paletteLength/2)))
+
+progeny_hmap = pheatmap(t(summarized_progeny_scores_df[,-1]),fontsize=14, 
+                        fontsize_row = 10, 
+                        color=myColor, breaks = progenyBreaks, 
+                        main = "PROGENy (500)", angle_col = 45,
+                        treeheight_col = 0,  border_color = NA, scale = "none")
+```
+
+```{r}
+VlnPlot(donor, features = "NFkB", group.by = "criteria")
+```
+
+
+#CCR2 Pos
+```{r}
+Idents(donor) <- "CCR2"
+donor_integrated.ccr2Pos <- subset(donor, idents = c("CCR2Pos"))
+```
+
+```{r}
+Idents(donor_integrated.ccr2Pos) <- "criteria"
+```
+
+```{r}
+## We create a data frame with the specification of the cells that belong to 
+## each cluster to match with the Progeny scores.
+CellsClusters <- data.frame(Cell = names(Idents(donor_integrated.ccr2Pos)), 
+    CellType = as.character(Idents(donor_integrated.ccr2Pos)),
+    stringsAsFactors = FALSE)
+```
+
+```{r}
+## We compute the Progeny activity scores and add them to our Seurat object
+## as a new assay called Progeny. 
+donor_integrated.ccr2Pos <- progeny(donor_integrated.ccr2Pos, scale=FALSE, organism="Mouse", top=500, perm=1, 
+    return_assay = TRUE)
+
+## We can now directly apply Seurat functions in our Progeny scores. 
+## For instance, we scale the pathway activity scores. 
+donor_integrated.ccr2Pos <- Seurat::ScaleData(donor_integrated.ccr2Pos, assay = "progeny") 
+
+## We transform Progeny scores into a data frame to better handling the results
+progeny_scores_df <- 
+    as.data.frame(t(GetAssayData(donor_integrated.ccr2Pos, slot = "scale.data", 
+        assay = "progeny"))) %>%
+    rownames_to_column("Cell") %>%
+    gather(Pathway, Activity, -Cell) 
+
+## We match Progeny scores with the cell clusters.
+progeny_scores_df <- inner_join(progeny_scores_df, CellsClusters)
+
+## We summarize the Progeny scores by cellpopulation
+summarized_progeny_scores <- progeny_scores_df %>% 
+    group_by(Pathway, CellType) %>%
+    summarise(avg = mean(Activity), std = sd(Activity))
+```
+
+```{r}
+## We prepare the data for the plot
+summarized_progeny_scores_df <- summarized_progeny_scores %>%
+    dplyr::select(-std) %>%   
+    spread(Pathway, avg) %>%
+    data.frame(row.names = 1, check.names = FALSE, stringsAsFactors = FALSE) 
+```
+
+```{r}
+paletteLength = 100
+myColor = colorRampPalette(c("Darkblue", "white","red"))(paletteLength)
+
+progenyBreaks = c(seq(min(summarized_progeny_scores_df), 0, 
+                      length.out=ceiling(paletteLength/2) + 1),
+                  seq(max(summarized_progeny_scores_df)/paletteLength, 
+                      max(summarized_progeny_scores_df), 
+                      length.out=floor(paletteLength/2)))
+
+progeny_hmap = pheatmap(t(summarized_progeny_scores_df[,-1]),fontsize=14, 
+                        fontsize_row = 10, 
+                        color=myColor, breaks = progenyBreaks, 
+                        main = "PROGENy (500)", angle_col = 45,
+                        treeheight_col = 0,  border_color = NA, scale = "none")
+```
+
+
+#CCR2 Neg
+```{r}
+donor_integrated.ccr2Pos <- subset(donor, idents = c("CCR2Pos"))
+```
+
+```{r}
+Idents(donor_integrated.ccr2Pos) <- "criteria"
+```
+
+```{r}
+## We create a data frame with the specification of the cells that belong to 
+## each cluster to match with the Progeny scores.
+CellsClusters <- data.frame(Cell = names(Idents(donor)), 
+    CellType = as.character(Idents(donor)),
+    stringsAsFactors = FALSE)
+```
+
+```{r}
+## We compute the Progeny activity scores and add them to our Seurat object
+## as a new assay called Progeny. 
+donor <- progeny(donor, scale=FALSE, organism="Mouse", top=500, perm=1, 
+    return_assay = TRUE)
+
+## We can now directly apply Seurat functions in our Progeny scores. 
+## For instance, we scale the pathway activity scores. 
+donor <- Seurat::ScaleData(donor, assay = "progeny") 
+
+## We transform Progeny scores into a data frame to better handling the results
+progeny_scores_df <- 
+    as.data.frame(t(GetAssayData(donor, slot = "scale.data", 
+        assay = "progeny"))) %>%
+    rownames_to_column("Cell") %>%
+    gather(Pathway, Activity, -Cell) 
+
+## We match Progeny scores with the cell clusters.
+progeny_scores_df <- inner_join(progeny_scores_df, CellsClusters)
+
+## We summarize the Progeny scores by cellpopulation
+summarized_progeny_scores <- progeny_scores_df %>% 
+    group_by(Pathway, CellType) %>%
+    summarise(avg = mean(Activity), std = sd(Activity))
+```
+
+```{r}
+## We prepare the data for the plot
+summarized_progeny_scores_df <- summarized_progeny_scores %>%
+    dplyr::select(-std) %>%   
+    spread(Pathway, avg) %>%
+    data.frame(row.names = 1, check.names = FALSE, stringsAsFactors = FALSE) 
+```
+
+```{r}
+paletteLength = 100
+myColor = colorRampPalette(c("Darkblue", "white","red"))(paletteLength)
+
+progenyBreaks = c(seq(min(summarized_progeny_scores_df), 0, 
+                      length.out=ceiling(paletteLength/2) + 1),
+                  seq(max(summarized_progeny_scores_df)/paletteLength, 
+                      max(summarized_progeny_scores_df), 
+                      length.out=floor(paletteLength/2)))
+
+progeny_hmap = pheatmap(t(summarized_progeny_scores_df[,-1]),fontsize=14, 
+                        fontsize_row = 10, 
+                        color=myColor, breaks = progenyBreaks, 
+                        main = "PROGENy (500)", angle_col = 45,
+                        treeheight_col = 0,  border_color = NA, scale = "none")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
